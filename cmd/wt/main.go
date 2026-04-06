@@ -4,6 +4,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	wcmd "github.com/noamsto/wt/internal/cmd"
+	"github.com/noamsto/wt/internal/git"
+	"github.com/noamsto/wt/internal/runtime"
+	"github.com/noamsto/wt/internal/tmux"
+	"github.com/noamsto/wt/internal/tui/prompt"
+	"github.com/noamsto/wt/internal/zoxide"
 )
 
 const helpText = `Git Worktree Manager
@@ -85,34 +92,78 @@ func parseArgs(args []string) (flags, []string) {
 
 func main() {
 	f, args := parseArgs(os.Args[1:])
-	_ = f
 
 	sub := ""
 	if len(args) > 0 {
 		sub = args[0]
 	}
 
+	// Help doesn't need a git repo
 	switch sub {
 	case "help", "-h", "--help", "":
 		fmt.Println(helpText)
+		return
+	}
+
+	// Everything else requires a git repo
+	repoRoot, err := git.RepoRoot()
+	if err != nil {
+		prompt.LogError("Not in a git repository")
+		os.Exit(1)
+	}
+
+	rt := runtime.Detect()
+	rt.NoSwitch = f.noSwitch
+	rt.Quiet = f.quiet
+	rt.Yes = f.yes
+
+	tmuxClient := tmux.New(rt.TmuxActive())
+	zoxideClient := zoxide.New(rt.HasZoxide)
+
+	switch sub {
 	case "list", "ls":
-		fmt.Fprintln(os.Stderr, "not implemented: list")
-		os.Exit(1)
+		if err := wcmd.List(repoRoot); err != nil {
+			prompt.LogError("%v", err)
+			os.Exit(1)
+		}
+
 	case "remove", "rm":
-		fmt.Fprintln(os.Stderr, "not implemented: remove")
-		os.Exit(1)
+		branch := ""
+		if len(args) > 1 {
+			branch = args[1]
+		}
+		if err := wcmd.Remove(repoRoot, branch, rt, tmuxClient, zoxideClient); err != nil {
+			prompt.LogError("%v", err)
+			os.Exit(1)
+		}
+
 	case "clean", "prune":
-		fmt.Fprintln(os.Stderr, "not implemented: clean")
-		os.Exit(1)
+		if err := wcmd.Clean(repoRoot, f.interactive, rt, tmuxClient, zoxideClient); err != nil {
+			prompt.LogError("%v", err)
+			os.Exit(1)
+		}
+
 	case "z":
-		fmt.Fprintln(os.Stderr, "not implemented: z")
-		os.Exit(1)
+		query := ""
+		if len(args) > 1 {
+			query = args[1]
+		}
+		if err := wcmd.Find(repoRoot, query, rt, tmuxClient); err != nil {
+			prompt.LogError("%v", err)
+			os.Exit(1)
+		}
+
 	case "main":
-		fmt.Fprintln(os.Stderr, "not implemented: main")
-		os.Exit(1)
+		if err := wcmd.MainSwitch(repoRoot, rt, tmuxClient); err != nil {
+			prompt.LogError("%v", err)
+			os.Exit(1)
+		}
+
 	default:
 		// Smart mode: treat as branch name
-		fmt.Fprintln(os.Stderr, "not implemented: smart")
-		os.Exit(1)
+		if err := wcmd.Smart(repoRoot, sub, rt, tmuxClient, zoxideClient); err != nil {
+			prompt.LogError("%v", err)
+			os.Exit(1)
+		}
 	}
 }
