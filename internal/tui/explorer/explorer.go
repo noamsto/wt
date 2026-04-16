@@ -41,6 +41,7 @@ type model struct {
 	visible      []int
 	cursor       int
 	selected     map[int]bool
+	expanded     map[int]bool
 	query        string
 	searching    bool
 	preview      viewport.Model
@@ -65,6 +66,7 @@ func Run(repoRoot string, worktrees []git.Worktree, tmuxClient *tmux.Client, zox
 		tmuxClient:   tmuxClient,
 		zoxideClient: zoxideClient,
 		selected:     make(map[int]bool),
+		expanded:     make(map[int]bool),
 		preview:      viewport.New(),
 	}
 	m.filterVisible()
@@ -177,6 +179,16 @@ func (m model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		for _, idx := range m.visible {
 			if m.worktrees[idx].IsStale() {
 				m.selected[idx] = true
+			}
+		}
+		return m, nil
+	case "e":
+		if len(m.visible) > 0 {
+			idx := m.visible[m.cursor]
+			if m.expanded[idx] {
+				delete(m.expanded, idx)
+			} else {
+				m.expanded[idx] = true
 			}
 		}
 		return m, nil
@@ -400,7 +412,7 @@ func (m *model) renderFull() string {
 	if m.searching {
 		b.WriteString(dimStyle.Render("type to filter  enter/esc accept  q clear+quit") + "\n")
 	} else {
-		b.WriteString(dimStyle.Render("j/k navigate  space select  a sel stale  d/D delete  / search  q quit") + "\n")
+		b.WriteString(dimStyle.Render("j/k navigate  space select  a sel stale  e expand dirty  d/D delete  / search  q quit") + "\n")
 	}
 
 	if m.confirmMsg != "" {
@@ -445,6 +457,8 @@ func (m *model) renderListLines(width, height int) []string {
 		} else {
 			line.WriteString(" ")
 		}
+
+		line.WriteString(" ")
 
 		if wt.IsStale() {
 			line.WriteString(staleStyle.Render("●"))
@@ -500,10 +514,20 @@ func (m *model) renderPreview() string {
 	b.WriteString(sep + "\n")
 
 	dirtyLabel := dimStyle.Render("  clean")
-	if wt.DirtyFiles > 0 {
-		dirtyLabel = warnStyle.Render(fmt.Sprintf("  %d dirty file(s)", wt.DirtyFiles))
+	if len(wt.DirtyFileNames) > 0 {
+		expandHint := " [e expand]"
+		if m.expanded[idx] {
+			expandHint = " [e collapse]"
+		}
+		dirtyLabel = warnStyle.Render(fmt.Sprintf("  %d dirty file(s)", len(wt.DirtyFileNames))) +
+			dimStyle.Render(expandHint)
 	}
 	b.WriteString(dirtyLabel + "\n")
+	if len(wt.DirtyFileNames) > 0 && m.expanded[idx] {
+		for _, name := range wt.DirtyFileNames {
+			b.WriteString(dimStyle.Render("    "+name) + "\n")
+		}
+	}
 
 	unpushedLabel := dimStyle.Render("  pushed")
 	if len(wt.UnpushedLog) > 0 {

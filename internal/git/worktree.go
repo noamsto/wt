@@ -11,13 +11,13 @@ import (
 
 // Worktree represents a git worktree with its metadata.
 type Worktree struct {
-	Branch        string
-	Path          string
-	StaleReason   string
-	DirtyFiles    int
-	UnpushedLog   []string
-	LastCommit    string
-	DetailsLoaded bool
+	Branch         string
+	Path           string
+	StaleReason    string
+	DirtyFileNames []string
+	UnpushedLog    []string
+	LastCommit     string
+	DetailsLoaded  bool
 }
 
 // IsStale returns true if the worktree has been marked stale.

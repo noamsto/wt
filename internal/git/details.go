@@ -11,9 +11,15 @@ func LoadDetails(wt *Worktree) {
 	if err == nil {
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 		if len(lines) == 1 && lines[0] == "" {
-			wt.DirtyFiles = 0
+			wt.DirtyFileNames = nil
 		} else {
-			wt.DirtyFiles = len(lines)
+			names := make([]string, 0, len(lines))
+			for _, l := range lines {
+				if len(l) > 3 {
+					names = append(names, l[3:])
+				}
+			}
+			wt.DirtyFileNames = names
 		}
 	}
 
