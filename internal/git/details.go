@@ -39,3 +39,18 @@ func LoadDetails(wt *Worktree) {
 
 	wt.DetailsLoaded = true
 }
+
+// LoadFileDiff returns the diff output for a single file in a worktree.
+func LoadFileDiff(wtPath, fileName string) string {
+	// Covers staged and unstaged changes vs HEAD
+	out, _ := exec.Command("git", "-C", wtPath, "diff", "HEAD", "--", fileName).Output()
+	if text := strings.TrimSpace(string(out)); text != "" {
+		return text
+	}
+	// Untracked files: diff against empty
+	out, _ = exec.Command("git", "-C", wtPath, "diff", "--no-index", "--", "/dev/null", fileName).Output()
+	if text := strings.TrimSpace(string(out)); text != "" {
+		return text
+	}
+	return "(no diff available)"
+}

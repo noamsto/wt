@@ -33,15 +33,25 @@ var (
 	statusBarStyle = lipgloss.NewStyle().Foreground(colorDim)
 )
 
+type listItem struct {
+	wtIndex  int
+	fileName string
+}
+
+func (item listItem) isFile() bool {
+	return item.fileName != ""
+}
+
 type model struct {
 	repoRoot     string
 	worktrees    []git.Worktree
 	tmuxClient   *tmux.Client
 	zoxideClient *zoxide.Client
-	visible      []int
+	items        []listItem
 	cursor       int
 	selected     map[int]bool
 	expanded     map[int]bool
+	diffCache    map[string]string
 	query        string
 	searching    bool
 	preview      viewport.Model
@@ -58,6 +68,11 @@ type detailsLoadedMsg struct {
 	index int
 }
 
+type diffLoadedMsg struct {
+	cacheKey string
+	diff     string
+}
+
 // Run launches the interactive TUI explorer.
 func Run(repoRoot string, worktrees []git.Worktree, tmuxClient *tmux.Client, zoxideClient *zoxide.Client) error {
 	m := model{
@@ -67,9 +82,10 @@ func Run(repoRoot string, worktrees []git.Worktree, tmuxClient *tmux.Client, zox
 		zoxideClient: zoxideClient,
 		selected:     make(map[int]bool),
 		expanded:     make(map[int]bool),
+		diffCache:    make(map[string]string),
 		preview:      viewport.New(),
 	}
-	m.filterVisible()
+	m.rebuildItems()
 	m.recomputeStaleCount()
 
 	p := tea.NewProgram(m)
@@ -78,8 +94,8 @@ func Run(repoRoot string, worktrees []git.Worktree, tmuxClient *tmux.Client, zox
 }
 
 func (m model) Init() tea.Cmd {
-	if len(m.visible) > 0 {
-		idx := m.visible[0]
+	if len(m.items) > 0 {
+		idx := m.items[0].wtIndex
 		if !m.worktrees[idx].DetailsLoaded {
 			return m.loadDetailsCmd(idx)
 		}
@@ -97,6 +113,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case detailsLoadedMsg:
 		m.worktrees[msg.index].DetailsLoaded = true
+		m.rebuildItems()
+		return m, nil
+	case diffLoadedMsg:
+		m.diffCache[msg.cacheKey] = msg.diff
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
@@ -132,16 +152,16 @@ func (m model) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "backspace":
 		if len(m.query) > 0 {
 			m.query = m.query[:len(m.query)-1]
-			m.filterVisible()
-			return m, m.ensureDetailsLoaded()
+			m.rebuildItems()
+			return m, m.ensureLoaded()
 		}
 		return m, nil
 	default:
 		key := msg.Key()
 		if key.Text != "" && key.Mod == 0 {
 			m.query += key.Text
-			m.filterVisible()
-			return m, m.ensureDetailsLoaded()
+			m.rebuildItems()
+			return m, m.ensureLoaded()
 		}
 		return m, nil
 	}
@@ -154,8 +174,8 @@ func (m model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "q", "esc":
 		if m.query != "" {
 			m.query = ""
-			m.filterVisible()
-			return m, m.ensureDetailsLoaded()
+			m.rebuildItems()
+			return m, m.ensureLoaded()
 		}
 		return m, tea.Quit
 	case "/":
@@ -166,30 +186,33 @@ func (m model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		return m, m.moveCursor(1)
 	case "space", " ":
-		if len(m.visible) > 0 {
-			idx := m.visible[m.cursor]
-			if m.selected[idx] {
-				delete(m.selected, idx)
-			} else {
-				m.selected[idx] = true
+		if len(m.items) > 0 {
+			item := m.items[m.cursor]
+			if !item.isFile() {
+				if m.selected[item.wtIndex] {
+					delete(m.selected, item.wtIndex)
+				} else {
+					m.selected[item.wtIndex] = true
+				}
 			}
 		}
 		return m, nil
 	case "a":
-		for _, idx := range m.visible {
-			if m.worktrees[idx].IsStale() {
-				m.selected[idx] = true
+		for _, item := range m.items {
+			if !item.isFile() && m.worktrees[item.wtIndex].IsStale() {
+				m.selected[item.wtIndex] = true
 			}
 		}
 		return m, nil
 	case "e":
-		if len(m.visible) > 0 {
-			idx := m.visible[m.cursor]
-			if m.expanded[idx] {
-				delete(m.expanded, idx)
+		if len(m.items) > 0 {
+			wtIdx := m.items[m.cursor].wtIndex
+			if m.expanded[wtIdx] {
+				delete(m.expanded, wtIdx)
 			} else {
-				m.expanded[idx] = true
+				m.expanded[wtIdx] = true
 			}
+			m.rebuildItems()
 		}
 		return m, nil
 	case "d":
@@ -203,23 +226,35 @@ func (m model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) moveCursor(delta int) tea.Cmd {
-	if len(m.visible) == 0 {
+	if len(m.items) == 0 {
 		return nil
 	}
 	m.cursor += delta
-	m.cursor = max(0, min(m.cursor, len(m.visible)-1))
-	return m.ensureDetailsLoaded()
+	m.cursor = max(0, min(m.cursor, len(m.items)-1))
+	return m.ensureLoaded()
 }
 
-func (m *model) ensureDetailsLoaded() tea.Cmd {
-	if len(m.visible) == 0 {
+func (m *model) ensureLoaded() tea.Cmd {
+	if len(m.items) == 0 {
 		return nil
 	}
-	idx := m.visible[m.cursor]
-	if !m.worktrees[idx].DetailsLoaded {
-		return m.loadDetailsCmd(idx)
+	item := m.items[m.cursor]
+	wt := &m.worktrees[item.wtIndex]
+
+	var cmds []tea.Cmd
+	if !wt.DetailsLoaded {
+		cmds = append(cmds, m.loadDetailsCmd(item.wtIndex))
 	}
-	return nil
+	if item.isFile() {
+		key := diffCacheKey(wt.Path, item.fileName)
+		if _, ok := m.diffCache[key]; !ok {
+			cmds = append(cmds, m.loadDiffCmd(wt.Path, item.fileName))
+		}
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m *model) loadDetailsCmd(idx int) tea.Cmd {
@@ -230,16 +265,34 @@ func (m *model) loadDetailsCmd(idx int) tea.Cmd {
 	}
 }
 
-func (m *model) filterVisible() {
-	m.visible = m.visible[:0]
+func (m *model) loadDiffCmd(wtPath, fileName string) tea.Cmd {
+	key := diffCacheKey(wtPath, fileName)
+	return func() tea.Msg {
+		diff := git.LoadFileDiff(wtPath, fileName)
+		return diffLoadedMsg{cacheKey: key, diff: diff}
+	}
+}
+
+func diffCacheKey(wtPath, fileName string) string {
+	return wtPath + "\x00" + fileName
+}
+
+func (m *model) rebuildItems() {
+	m.items = m.items[:0]
 	q := strings.ToLower(m.query)
-	for i := range m.worktrees {
-		if q == "" || strings.Contains(strings.ToLower(m.worktrees[i].Branch), q) {
-			m.visible = append(m.visible, i)
+	for i, wt := range m.worktrees {
+		if q != "" && !strings.Contains(strings.ToLower(wt.Branch), q) {
+			continue
+		}
+		m.items = append(m.items, listItem{wtIndex: i})
+		if m.expanded[i] && wt.DetailsLoaded && len(wt.DirtyFileNames) > 0 {
+			for _, name := range wt.DirtyFileNames {
+				m.items = append(m.items, listItem{wtIndex: i, fileName: name})
+			}
 		}
 	}
-	if m.cursor >= len(m.visible) {
-		m.cursor = max(0, len(m.visible)-1)
+	if m.cursor >= len(m.items) {
+		m.cursor = max(0, len(m.items)-1)
 	}
 }
 
@@ -261,14 +314,19 @@ func (m *model) startDelete(force bool) {
 }
 
 func (m *model) deleteTargets() []int {
+	seen := make(map[int]bool)
 	var targets []int
-	for _, idx := range m.visible {
-		if m.selected[idx] {
-			targets = append(targets, idx)
+	for _, item := range m.items {
+		if item.isFile() {
+			continue
+		}
+		if m.selected[item.wtIndex] && !seen[item.wtIndex] {
+			targets = append(targets, item.wtIndex)
+			seen[item.wtIndex] = true
 		}
 	}
-	if len(targets) == 0 && len(m.visible) > 0 {
-		targets = []int{m.visible[m.cursor]}
+	if len(targets) == 0 && len(m.items) > 0 {
+		targets = []int{m.items[m.cursor].wtIndex}
 	}
 	return targets
 }
@@ -312,10 +370,17 @@ func (m *model) executeDelete() {
 				newSelected[newIdx] = true
 			}
 		}
+		newExpanded := make(map[int]bool)
+		for oldIdx := range m.expanded {
+			if newIdx, ok := indexMap[oldIdx]; ok {
+				newExpanded[newIdx] = true
+			}
+		}
 
 		m.worktrees = newWorktrees
 		m.selected = newSelected
-		m.filterVisible()
+		m.expanded = newExpanded
+		m.rebuildItems()
 		m.recomputeStaleCount()
 	}
 
@@ -412,7 +477,7 @@ func (m *model) renderFull() string {
 	if m.searching {
 		b.WriteString(dimStyle.Render("type to filter  enter/esc accept  q clear+quit") + "\n")
 	} else {
-		b.WriteString(dimStyle.Render("j/k navigate  space select  a sel stale  e expand dirty  d/D delete  / search  q quit") + "\n")
+		b.WriteString(dimStyle.Render("j/k navigate  space select  a sel stale  e expand  d/D delete  / search  q quit") + "\n")
 	}
 
 	if m.confirmMsg != "" {
@@ -435,7 +500,7 @@ func (m *model) renderListLines(width, height int) []string {
 		start = m.cursor - height + 1
 	}
 
-	for i, idx := range m.visible {
+	for i, item := range m.items {
 		if i < start {
 			continue
 		}
@@ -443,42 +508,11 @@ func (m *model) renderListLines(width, height int) []string {
 			break
 		}
 
-		wt := m.worktrees[idx]
-		var line strings.Builder
-
-		if i == m.cursor {
-			line.WriteString(cursorStyle.Render("> "))
+		if item.isFile() {
+			lines = append(lines, m.renderFileLine(i, item, width))
 		} else {
-			line.WriteString("  ")
+			lines = append(lines, m.renderWorktreeLine(i, item, width))
 		}
-
-		if m.selected[idx] {
-			line.WriteString(selectedStyle.Render("✓"))
-		} else {
-			line.WriteString(" ")
-		}
-
-		line.WriteString(" ")
-
-		if wt.IsStale() {
-			line.WriteString(staleStyle.Render("●"))
-		} else {
-			line.WriteString(" ")
-		}
-
-		line.WriteString(" ")
-		if i == m.cursor {
-			line.WriteString(cursorStyle.Render(wt.Branch))
-		} else {
-			line.WriteString(wt.Branch)
-		}
-
-		if wt.IsStale() {
-			line.WriteString(" ")
-			line.WriteString(staleStyle.Render("[" + wt.StaleReason + "]"))
-		}
-
-		lines = append(lines, truncateToWidth(line.String(), width))
 	}
 
 	for len(lines) < height {
@@ -487,13 +521,95 @@ func (m *model) renderListLines(width, height int) []string {
 	return lines
 }
 
+func (m *model) renderWorktreeLine(i int, item listItem, width int) string {
+	wt := m.worktrees[item.wtIndex]
+	var line strings.Builder
+
+	if i == m.cursor {
+		line.WriteString(cursorStyle.Render("> "))
+	} else {
+		line.WriteString("  ")
+	}
+
+	if m.selected[item.wtIndex] {
+		line.WriteString(selectedStyle.Render("✓"))
+	} else {
+		line.WriteString(" ")
+	}
+
+	line.WriteString(" ")
+
+	if wt.IsStale() {
+		line.WriteString(staleStyle.Render("●"))
+	} else {
+		line.WriteString(" ")
+	}
+
+	line.WriteString(" ")
+	if i == m.cursor {
+		line.WriteString(cursorStyle.Render(wt.Branch))
+	} else {
+		line.WriteString(wt.Branch)
+	}
+
+	if wt.IsStale() {
+		line.WriteString(" ")
+		line.WriteString(staleStyle.Render("[" + wt.StaleReason + "]"))
+	}
+
+	if m.expanded[item.wtIndex] && wt.DetailsLoaded && len(wt.DirtyFileNames) > 0 {
+		line.WriteString(" ")
+		line.WriteString(dimStyle.Render(fmt.Sprintf("(%d)", len(wt.DirtyFileNames))))
+	}
+
+	return truncateToWidth(line.String(), width)
+}
+
+func (m *model) renderFileLine(i int, item listItem, width int) string {
+	var line strings.Builder
+
+	if i == m.cursor {
+		line.WriteString(cursorStyle.Render("> "))
+	} else {
+		line.WriteString("  ")
+	}
+
+	// Blank columns to align with worktree: selected(1) + space(1) + stale(1) + space(1)
+	line.WriteString("    ")
+
+	isLast := i+1 >= len(m.items) ||
+		!m.items[i+1].isFile() ||
+		m.items[i+1].wtIndex != item.wtIndex
+
+	if isLast {
+		line.WriteString(dimStyle.Render("╰─ "))
+	} else {
+		line.WriteString(dimStyle.Render("├─ "))
+	}
+
+	if i == m.cursor {
+		line.WriteString(cursorStyle.Render(item.fileName))
+	} else {
+		line.WriteString(warnStyle.Render(item.fileName))
+	}
+
+	return truncateToWidth(line.String(), width)
+}
+
 func (m *model) renderPreview() string {
-	if len(m.visible) == 0 {
+	if len(m.items) == 0 {
 		return dimStyle.Render("No worktrees to display.")
 	}
 
-	idx := m.visible[m.cursor]
-	wt := m.worktrees[idx]
+	item := m.items[m.cursor]
+	if item.isFile() {
+		return m.renderFileDiffPreview(item)
+	}
+	return m.renderWorktreePreview(item)
+}
+
+func (m *model) renderWorktreePreview(item listItem) string {
+	wt := m.worktrees[item.wtIndex]
 	pw, _ := m.previewDimensions()
 	sep := dimStyle.Render(strings.Repeat("─", max(0, pw-1)))
 
@@ -515,19 +631,14 @@ func (m *model) renderPreview() string {
 
 	dirtyLabel := dimStyle.Render("  clean")
 	if len(wt.DirtyFileNames) > 0 {
-		expandHint := " [e expand]"
-		if m.expanded[idx] {
-			expandHint = " [e collapse]"
+		hint := " [e expand]"
+		if m.expanded[item.wtIndex] {
+			hint = " [e collapse]"
 		}
 		dirtyLabel = warnStyle.Render(fmt.Sprintf("  %d dirty file(s)", len(wt.DirtyFileNames))) +
-			dimStyle.Render(expandHint)
+			dimStyle.Render(hint)
 	}
 	b.WriteString(dirtyLabel + "\n")
-	if len(wt.DirtyFileNames) > 0 && m.expanded[idx] {
-		for _, name := range wt.DirtyFileNames {
-			b.WriteString(dimStyle.Render("    "+name) + "\n")
-		}
-	}
 
 	unpushedLabel := dimStyle.Render("  pushed")
 	if len(wt.UnpushedLog) > 0 {
@@ -547,6 +658,42 @@ func (m *model) renderPreview() string {
 		b.WriteString(sep + "\n")
 		b.WriteString(headerStyle.Render("  Last commit") + "\n")
 		b.WriteString(dimStyle.Render("  ") + wt.LastCommit + "\n")
+	}
+
+	return b.String()
+}
+
+func (m *model) renderFileDiffPreview(item listItem) string {
+	wt := m.worktrees[item.wtIndex]
+	pw, _ := m.previewDimensions()
+	sep := dimStyle.Render(strings.Repeat("─", max(0, pw-1)))
+
+	var b strings.Builder
+
+	b.WriteString(headerStyle.Render("  "+item.fileName) + "\n")
+	b.WriteString(dimStyle.Render("  "+wt.Branch+" · "+wt.Path) + "\n")
+	b.WriteString(sep + "\n")
+
+	key := diffCacheKey(wt.Path, item.fileName)
+	diff, ok := m.diffCache[key]
+	if !ok {
+		b.WriteString(dimStyle.Render("  Loading..."))
+		return b.String()
+	}
+
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+			b.WriteString(dimStyle.Render("  "+line) + "\n")
+		case strings.HasPrefix(line, "+"):
+			b.WriteString(selectedStyle.Render("  "+line) + "\n")
+		case strings.HasPrefix(line, "-"):
+			b.WriteString(staleStyle.Render("  "+line) + "\n")
+		case strings.HasPrefix(line, "@@"):
+			b.WriteString(cursorStyle.Render("  "+line) + "\n")
+		default:
+			b.WriteString(dimStyle.Render("  "+line) + "\n")
+		}
 	}
 
 	return b.String()
