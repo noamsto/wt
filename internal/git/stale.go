@@ -6,6 +6,21 @@ import (
 	"sync"
 )
 
+// ParseBranchList parses output from `git branch --merged` into a set of branch names.
+func ParseBranchList(output string) map[string]bool {
+	branches := make(map[string]bool)
+	for line := range strings.SplitSeq(output, "\n") {
+		if len(line) < 3 {
+			continue
+		}
+		name := strings.TrimSpace(line[2:])
+		if name != "" {
+			branches[name] = true
+		}
+	}
+	return branches
+}
+
 // DetectStale marks worktrees as stale using two local strategies:
 // merged branches and deleted remote branches.
 func DetectStale(repoRoot, defaultBranch string, worktrees []Worktree) {
