@@ -94,13 +94,13 @@ func Run(repoRoot string, worktrees []git.Worktree, tmuxClient *tmux.Client, zox
 }
 
 func (m model) Init() tea.Cmd {
-	if len(m.items) > 0 {
-		idx := m.items[0].wtIndex
-		if !m.worktrees[idx].DetailsLoaded {
-			return m.loadDetailsCmd(idx)
+	var cmds []tea.Cmd
+	for i := range m.worktrees {
+		if !m.worktrees[i].DetailsLoaded {
+			cmds = append(cmds, m.loadDetailsCmd(i))
 		}
 	}
-	return nil
+	return tea.Batch(cmds...)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
