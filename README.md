@@ -1,12 +1,11 @@
-# wt
+# wtc
 
-Git worktree manager. Single binary, no required dependencies beyond `git`.
+Git worktree cleanup tool. Finds and removes stale worktrees.
 
 Optional integrations are auto-detected and silently no-op when unavailable:
 
-- **tmux** -- one window per worktree, one session per project
-- **zoxide** -- frecency tracking for worktree directories
-- **gh** -- squash-merge detection for stale branch cleanup
+- **tmux** — kills windows for removed worktrees
+- **gh** — squash-merge detection for stale branch cleanup
 
 ## Install
 
@@ -14,59 +13,40 @@ Optional integrations are auto-detected and silently no-op when unavailable:
 
 ```nix
 # flake input
-inputs.wt.url = "github:noamsto/wt";
+inputs.wtc.url = "github:noamsto/wtc";
 
-# use the package directly
-wt.packages.${system}.default
+# use the package
+wtc.packages.${system}.default
+```
 
-# or via home-manager module
-imports = [ wt.homeManagerModules.default ];
-programs.wt.enable = true;  # also installs fish completions
+#### Binary cache
+
+```nix
+nix.settings = {
+  substituters = ["https://wtc.cachix.org"];
+  trusted-public-keys = ["wtc.cachix.org-1:rXr2jpSoAtqezDz8xK/gPMjH2Rgyda0zOErfk3N5WnI="];
+};
 ```
 
 ### Go
 
 ```bash
-go install github.com/noamsto/wt/cmd/wt@latest
+go install github.com/noamsto/wt/cmd/wtc@latest
 ```
 
 ## Usage
 
 ```
-wt <branch>           Smart switch/create (prompts before creating)
-wt -y <branch>        Skip prompts
-wt -q <branch>        Quiet mode (only output path)
-wt -n <branch>        No tmux (skip window creation/switching)
-wt -yqn <branch>      Combine flags (for scripts)
-wt z [query]          Fuzzy find worktree, output path
-wt main               Switch to root repository window
-wt list               List all worktrees
-wt remove <branch>    Remove worktree + kill window
-wt clean              Remove stale worktrees (merged, squash-merged, deleted)
-wt clean -i           Interactive TUI explorer
-wt help               Show this help
-```
-
-### Smart mode
-
-`wt <branch>` figures out what to do:
-
-| Condition | Action |
-|-----------|--------|
-| Worktree exists | Switch to its tmux window |
-| Branch exists | Prompt to create worktree |
-| Branch not found | Prompt to create new branch |
-
-### Scripting
-
-```fish
-# cd into a worktree (create if needed, no tmux, no prompts)
-cd (wt -yqn my-feature)
+wtc               Find and remove stale worktrees (interactive prompt)
+wtc -i            Interactive TUI explorer
+wtc -y            Skip confirmation prompts
+wtc -q            Quiet mode
+wtc -h            Show help
 ```
 
 ### Interactive explorer
 
-`wt clean -i` opens a TUI for inspecting and cleaning up worktrees:
+`wtc -i` opens a TUI for inspecting and cleaning up worktrees:
 
 ```
 j/k  navigate       space  select        a  select all stale
@@ -78,7 +58,7 @@ The preview pane shows branch details, dirty files, unpushed commits, and last c
 
 ### Stale detection
 
-`wt clean` identifies worktrees whose branches are:
+`wtc` identifies worktrees whose branches are:
 
 - Merged into the default branch
 - Squash-merged via GitHub PR (requires `gh`)
@@ -86,7 +66,7 @@ The preview pane shows branch details, dirty files, unpushed commits, and last c
 
 ## Worktree layout
 
-Worktrees are created under `.worktrees/<branch-name>` relative to the repo root.
+Worktrees are expected under `.worktrees/<branch-name>` relative to the repo root (the default for [worktrunk](https://worktrunk.dev/)).
 
 ## License
 
