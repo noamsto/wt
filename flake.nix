@@ -1,5 +1,5 @@
 {
-  description = "wt - Git worktree manager";
+  description = "wtc - Worktree cleanup tool";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -12,15 +12,15 @@
 
       perSystem = {pkgs, ...}: {
         packages.default = pkgs.buildGoModule {
-          pname = "wt";
+          pname = "wtc";
           version = "0.1.0";
           src = ./.;
           vendorHash = "sha256-omCeza0ltzWu0RulQGcc6hQ4lT5gH0hh404vrfZjda8=";
           ldflags = ["-s" "-w"];
-          subPackages = ["cmd/wt"];
+          subPackages = ["cmd/wtc"];
           meta = {
-            description = "Git worktree manager with optional tmux integration";
-            mainProgram = "wt";
+            description = "Worktree cleanup tool with TUI explorer";
+            mainProgram = "wtc";
           };
         };
       };
@@ -32,17 +32,17 @@
           pkgs,
           ...
         }: let
-          cfg = config.programs.wt;
-          wtPkg = inputs.self.packages.${pkgs.system}.default;
+          cfg = config.programs.wtc;
+          wtcPkg = inputs.self.packages.${pkgs.system}.default;
         in {
-          options.programs.wt = {
-            enable = lib.mkEnableOption "wt - git worktree manager";
+          options.programs.wtc = {
+            enable = lib.mkEnableOption "wtc - worktree cleanup tool";
           };
 
           config = lib.mkIf cfg.enable {
-            home.packages = [wtPkg];
+            home.packages = [wtcPkg];
 
-            xdg.configFile."fish/completions/wt.fish".source = ./completions/wt.fish;
+            xdg.configFile."fish/completions/wtc.fish".source = ./completions/wtc.fish;
           };
         };
       };
