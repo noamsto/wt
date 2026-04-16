@@ -8,7 +8,6 @@ import (
 
 	"github.com/noamsto/wt/internal/runtime"
 	"github.com/noamsto/wt/internal/tmux"
-	"github.com/noamsto/wt/internal/zoxide"
 )
 
 // testRepo creates a temp git repo with an initial commit on main.
@@ -46,15 +45,11 @@ func testTmux() *tmux.Client {
 	return tmux.New(false)
 }
 
-func testZoxide() *zoxide.Client {
-	return zoxide.New(false)
-}
-
 func TestClean_NoWorktrees(t *testing.T) {
 	repo := testRepo(t)
 	rt := testRuntime()
 
-	err := Clean(repo, false, rt, testTmux(), testZoxide())
+	err := Clean(repo, false, rt, testTmux())
 	if err != nil {
 		t.Fatalf("Clean() error: %v", err)
 	}
@@ -70,7 +65,7 @@ func TestClean_NoStale(t *testing.T) {
 	// Make a commit on the branch so it's not merged
 	gitRun(t, wtPath, "commit", "--allow-empty", "-m", "active work")
 
-	err := Clean(repo, false, rt, testTmux(), testZoxide())
+	err := Clean(repo, false, rt, testTmux())
 	if err != nil {
 		t.Fatalf("Clean() error: %v", err)
 	}

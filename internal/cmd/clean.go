@@ -9,11 +9,10 @@ import (
 	"github.com/noamsto/wt/internal/tmux"
 	"github.com/noamsto/wt/internal/tui/explorer"
 	"github.com/noamsto/wt/internal/tui/prompt"
-	"github.com/noamsto/wt/internal/zoxide"
 )
 
 // Clean removes stale worktrees. If interactive is true, launches the TUI explorer.
-func Clean(repoRoot string, interactive bool, rt runtime.Runtime, tmuxClient *tmux.Client, zoxideClient *zoxide.Client) error {
+func Clean(repoRoot string, interactive bool, rt runtime.Runtime, tmuxClient *tmux.Client) error {
 	defaultBranch, err := git.DefaultBranch(repoRoot)
 	if err != nil {
 		return err
@@ -46,7 +45,7 @@ func Clean(repoRoot string, interactive bool, rt runtime.Runtime, tmuxClient *tm
 			}
 			return worktrees[i].Branch < worktrees[j].Branch
 		})
-		return explorer.Run(repoRoot, worktrees, tmuxClient, zoxideClient)
+		return explorer.Run(repoRoot, worktrees, tmuxClient)
 	}
 
 	// Non-interactive: find stale and prompt
@@ -80,7 +79,6 @@ func Clean(repoRoot string, interactive bool, rt runtime.Runtime, tmuxClient *tm
 			prompt.Log(rt.Quiet, "  ❌ Failed: %v", err)
 			failed++
 		} else {
-			zoxideClient.Remove(wt.Path)
 			prompt.Log(rt.Quiet, "  ✓ Removed worktree")
 		}
 	}

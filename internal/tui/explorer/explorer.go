@@ -10,7 +10,6 @@ import (
 
 	"github.com/noamsto/wt/internal/git"
 	"github.com/noamsto/wt/internal/tmux"
-	"github.com/noamsto/wt/internal/zoxide"
 )
 
 var (
@@ -45,8 +44,7 @@ func (item listItem) isFile() bool {
 type model struct {
 	repoRoot     string
 	worktrees    []git.Worktree
-	tmuxClient   *tmux.Client
-	zoxideClient *zoxide.Client
+	tmuxClient *tmux.Client
 	items        []listItem
 	cursor       int
 	selected     map[int]bool
@@ -74,12 +72,11 @@ type diffLoadedMsg struct {
 }
 
 // Run launches the interactive TUI explorer.
-func Run(repoRoot string, worktrees []git.Worktree, tmuxClient *tmux.Client, zoxideClient *zoxide.Client) error {
+func Run(repoRoot string, worktrees []git.Worktree, tmuxClient *tmux.Client) error {
 	m := model{
-		repoRoot:     repoRoot,
-		worktrees:    worktrees,
-		tmuxClient:   tmuxClient,
-		zoxideClient: zoxideClient,
+		repoRoot:  repoRoot,
+		worktrees: worktrees,
+		tmuxClient: tmuxClient,
 		selected:     make(map[int]bool),
 		expanded:     make(map[int]bool),
 		diffCache:    make(map[string]string),
@@ -358,7 +355,6 @@ func (m *model) executeDelete() {
 			lastErr = fmt.Sprintf("Error removing %s: %v", wt.Branch, err)
 		} else {
 			m.tmuxClient.KillWindow(m.repoRoot, wt.Path)
-			m.zoxideClient.Remove(wt.Path)
 			removedSet[idx] = true
 			removed++
 		}

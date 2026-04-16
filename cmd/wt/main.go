@@ -10,7 +10,6 @@ import (
 	"github.com/noamsto/wt/internal/runtime"
 	"github.com/noamsto/wt/internal/tmux"
 	"github.com/noamsto/wt/internal/tui/prompt"
-	"github.com/noamsto/wt/internal/zoxide"
 )
 
 const helpText = `wtc - Worktree Cleanup
@@ -88,9 +87,8 @@ func main() {
 	rt.Yes = f.yes
 
 	tmuxClient := tmux.New(rt.TmuxActive())
-	zoxideClient := zoxide.New(rt.HasZoxide)
 
-	if err := wcmd.Clean(repoRoot, f.interactive, rt, tmuxClient, zoxideClient); err != nil {
+	if err := wcmd.Clean(repoRoot, f.interactive, rt, tmuxClient); err != nil {
 		prompt.LogError("%v", err)
 		os.Exit(1)
 	}
