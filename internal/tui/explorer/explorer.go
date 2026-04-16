@@ -185,6 +185,12 @@ func (m model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.moveCursor(-1)
 	case "down", "j":
 		return m, m.moveCursor(1)
+	case "alt+k":
+		m.preview.ScrollUp(1)
+		return m, nil
+	case "alt+j":
+		m.preview.ScrollDown(1)
+		return m, nil
 	case "space", " ":
 		if len(m.items) > 0 {
 			item := m.items[m.cursor]
@@ -198,9 +204,13 @@ func (m model) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "a":
-		for _, item := range m.items {
-			if !item.isFile() && m.worktrees[item.wtIndex].IsStale() {
-				m.selected[item.wtIndex] = true
+		if len(m.selected) > 0 {
+			m.selected = make(map[int]bool)
+		} else {
+			for _, item := range m.items {
+				if !item.isFile() && m.worktrees[item.wtIndex].IsStale() {
+					m.selected[item.wtIndex] = true
+				}
 			}
 		}
 		return m, nil
@@ -477,7 +487,7 @@ func (m *model) renderFull() string {
 	if m.searching {
 		b.WriteString(dimStyle.Render("type to filter  enter/esc accept  q clear+quit") + "\n")
 	} else {
-		b.WriteString(dimStyle.Render("j/k navigate  space select  a sel stale  e expand  d/D delete  / search  q quit") + "\n")
+		b.WriteString(dimStyle.Render("j/k move  alt+j/k scroll  space sel  a toggle stale  e expand  d/D del  / search  q quit") + "\n")
 	}
 
 	if m.confirmMsg != "" {
