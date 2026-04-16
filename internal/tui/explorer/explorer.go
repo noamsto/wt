@@ -539,14 +539,16 @@ func (m *model) renderWorktreeLine(i int, item listItem, width int) string {
 
 	line.WriteString(" ")
 
-	if wt.IsStale() {
-		line.WriteString(staleStyle.Render("●"))
+	if wt.DetailsLoaded && len(wt.DirtyFileNames) > 0 {
+		line.WriteString(warnStyle.Render("+"))
 	} else {
 		line.WriteString(" ")
 	}
 
-	if wt.DetailsLoaded && len(wt.DirtyFileNames) > 0 {
-		line.WriteString(warnStyle.Render("+"))
+	line.WriteString(" ")
+
+	if wt.IsStale() {
+		line.WriteString(staleStyle.Render("●"))
 	} else {
 		line.WriteString(" ")
 	}
@@ -580,8 +582,8 @@ func (m *model) renderFileLine(i int, item listItem, width int) string {
 		line.WriteString("  ")
 	}
 
-	// Blank columns to align with worktree: selected(1) + space(1) + stale(1) + dirty(1) + space(1)
-	line.WriteString("     ")
+	// Blank columns to align with worktree: selected(1) + space(1) + dirty(1) + space(1) + stale(1) + space(1)
+	line.WriteString("      ")
 
 	isLast := i+1 >= len(m.items) ||
 		!m.items[i+1].isFile() ||
