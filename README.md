@@ -2,6 +2,8 @@
 
 Git worktree cleanup tool. Finds and removes stale worktrees.
 
+![wtc demo](demo/wtc-demo.gif)
+
 Optional integrations are auto-detected and silently no-op when unavailable:
 
 - **tmux** — kills windows for removed worktrees
