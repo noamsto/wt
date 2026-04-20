@@ -1,59 +1,62 @@
-# Regenerate wtc-demo.gif
-#   nix shell nixpkgs#vhs -- vhs demo/demo.tape
-# Output lands next to the tape; move it wherever the README points to.
-
-Output demo/wtc-demo.gif
-
+# Regenerate via demo/generate.sh (builds wtc, pre-creates the tmux session).
+# NOTE: VHS requires all Set directives before Env/Output.
 Set Shell bash
-Set FontSize 14
-Set Width 1200
-Set Height 720
+Set FontSize 22
+Set Width 1600
+Set Height 1000
 Set Padding 20
 Set TypingSpeed 50ms
 Set Theme "Catppuccin Mocha"
 
-# --- Setup (hidden) ---
+Output demo/wtc-demo.gif
+
+# --- Attach to the pre-created session on its isolated socket (see generate.sh) ---
 Hide
-Type "bash demo/setup.sh /tmp/wtc-demo"
+Type "tmux -L wtcdemo attach-session -t demo"
 Enter
-Sleep 3s
-Type "tmux -L wtcdemo kill-server 2>/dev/null; cd /tmp/wtc-demo/repo; clear"
+Sleep 800ms
+Type "clear"
 Enter
+Sleep 400ms
 Show
 
-# --- Start tmux on an isolated socket with an empty config (no user tmux.conf, bash default shell) ---
-Type "tmux -L wtcdemo -f /dev/null new-session -s demo bash"
+# --- Baseline: what's in the repo before cleanup ---
+Type "git worktree list"
 Enter
-Sleep 1500ms
+Sleep 3500ms
 Type "clear"
 Enter
 Sleep 500ms
 
-# --- Launch wtc in a floating popup ---
-Type "tmux display-popup -E -w 90% -h 90% wtc -i"
+# --- Step 1: non-interactive wtc handles obvious stale (merged + remote-deleted) ---
+Type "wtc -y"
+Enter
+Sleep 4s
+Type "clear"
+Enter
+Sleep 500ms
+
+# --- Step 2: wtc -i for the dirty leftover; auto-pops up inside tmux ---
+Type "wtc -i"
 Sleep 500ms
 Enter
-Sleep 2500ms
+Sleep 3500ms
 
-# --- Explore: navigate and select all stale ---
-Down
-Sleep 800ms
-Down
-Sleep 800ms
-Type "a"
-Sleep 1500ms
-
-# --- Delete selected ---
-Type "d"
-Sleep 1500ms
-Type "y"
-Sleep 2500ms
-
-# --- Quit popup ---
-Type "q"
+# --- Expand to show why the delete failed (dirty files) ---
+Type "e"
+Sleep 3500ms
+Type "e"
 Sleep 1s
 
-# --- Show the result back in the shell ---
+# --- Force-delete with `D` (capital) ---
+Type "D"
+Sleep 2500ms
+Type "y"
+Sleep 3s
+
+# --- Quit popup; verify the cleanup ---
+Type "q"
+Sleep 1500ms
 Type "git worktree list"
 Enter
-Sleep 2s
+Sleep 4s
