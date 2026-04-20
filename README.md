@@ -6,7 +6,7 @@ Git worktree cleanup tool. Finds and removes stale worktrees.
 
 Optional integrations are auto-detected and silently no-op when unavailable:
 
-- **tmux** — kills windows for removed worktrees
+- **tmux** — kills windows for removed worktrees; `wtc -i` auto-opens as a floating popup when `$TMUX` is set
 - **gh** — squash-merge detection for stale branch cleanup
 
 ## Install
@@ -57,6 +57,18 @@ e    expand dirty    d      delete        D  force delete
 ```
 
 The preview pane shows branch details, dirty files, unpushed commits, and last commit info. Press `e` to expand the list of dirty files for a worktree.
+
+### Tmux popup
+
+When `wtc -i` runs inside a tmux session, it re-execs itself as a
+`display-popup` so the TUI floats over your workspace instead of taking over
+the current pane.
+
+```
+WTC_NO_POPUP=1      Keep the TUI inline (opt out)
+WTC_POPUP_WIDTH     Popup width  (default 90%; any `display-popup -w` value)
+WTC_POPUP_HEIGHT    Popup height (default 90%; any `display-popup -h` value)
+```
 
 ### Stale detection
 

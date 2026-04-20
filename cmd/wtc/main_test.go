@@ -79,6 +79,11 @@ func TestParseArgs(t *testing.T) {
 			args:      []string{"-yqi"},
 			wantFlags: flags{yes: true, quiet: true, interactive: true},
 		},
+		{
+			name:      "in-popup flag",
+			args:      []string{"-i", "--in-popup"},
+			wantFlags: flags{interactive: true, inPopup: true},
+		},
 	}
 
 	for _, tt := range tests {

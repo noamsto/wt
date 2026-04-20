@@ -24,12 +24,17 @@ Usage:
 Stale detection:
   • Merged into default branch
   • Remote branch deleted
-  • GitHub PR squash-merged`
+  • GitHub PR squash-merged
+
+Environment:
+  WTC_NO_POPUP=1                 Disable auto-popup; keep the TUI inline
+  WTC_POPUP_WIDTH / _HEIGHT      Override popup size (default 90%)`
 
 type flags struct {
 	yes         bool
 	quiet       bool
 	interactive bool
+	inPopup     bool
 }
 
 func parseArgs(args []string) (flags, bool) {
@@ -60,6 +65,8 @@ func parseArgs(args []string) (flags, bool) {
 			f.quiet = true
 		case "--interactive":
 			f.interactive = true
+		case "--in-popup":
+			f.inPopup = true
 		case "--help", "help":
 			showHelp = true
 		}
@@ -85,6 +92,16 @@ func main() {
 	rt := runtime.Detect()
 	rt.Quiet = f.quiet
 	rt.Yes = f.yes
+
+	// Auto-popup: when -i is run inside tmux, re-exec ourselves inside a
+	// display-popup so the TUI floats instead of taking over the parent pane.
+	// WTC_NO_POPUP=1 disables this. Does not return on success.
+	if f.interactive && !f.inPopup && rt.InTmux && rt.HasTmux && os.Getenv("WTC_NO_POPUP") == "" {
+		popupArgs := append([]string{"--in-popup"}, os.Args[1:]...)
+		if err := tmux.ReExecInPopup(popupArgs...); err != nil {
+			prompt.LogError("tmux popup unavailable, running inline: %v", err)
+		}
+	}
 
 	tmuxClient := tmux.New(rt.TmuxActive())
 
