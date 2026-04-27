@@ -26,7 +26,7 @@ func Clean(repoRoot string, interactive bool, rt runtime.Runtime, tmuxClient *tm
 		return err
 	}
 
-	if len(worktrees) == 0 {
+	if len(worktrees) == 0 && !interactive {
 		prompt.Log(rt.Quiet, "No worktrees to clean (besides main).")
 		return nil
 	}

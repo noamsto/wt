@@ -501,6 +501,14 @@ func (m *model) renderFull() string {
 func (m *model) renderListLines(width, height int) []string {
 	lines := make([]string, 0, height)
 
+	if len(m.items) == 0 {
+		lines = append(lines, dimStyle.Render("  No worktrees besides main — press q to close."))
+		for len(lines) < height {
+			lines = append(lines, "")
+		}
+		return lines
+	}
+
 	start := 0
 	if m.cursor >= height {
 		start = m.cursor - height + 1
